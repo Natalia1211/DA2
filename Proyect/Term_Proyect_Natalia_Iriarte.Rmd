@@ -1,0 +1,263 @@
+---
+title: "Analysis of the use of ad boosts in wish products"
+author: "Natalia Iriarte"
+date: "22/12/2021"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.pos = "!H", out.extra = "")
+knitr::opts_chunk$set(echo = FALSE, out.width = "50%" )#fig.asp = 0.5, fig.width = 7, out.width = "90%" )
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+
+```
+
+## Objetive
+
+This is an analysis of the probability that products from Wish platform make use of ad boosts. The objective is to determine the impact of the price and the rating in the use of advertising on the platform.
+
+## Introduction
+
+Wish is characterized by its "fast fashion" proposal where it seeks to offer current trend clothes at low prices. Under this scheme, suppliers do not seek to differentiate themselves with quality, but rather to compete with a low-cost strategy, where the margin of each piece is low, and suppliers aim for volume to be profitable. For this reason, suppliers must seek the highest possible visibility on the platform to capture customer attention and achieve a higher sales volume. In the case of ecommerce, the best way to have visibility is through ad boosts that seek to highlight products or place them among the first places in searches. However, competing with low prices implies minimizing all costs, including advertising, so suppliers must allocate resources to those products with the greatest chances of becoming a top seller.
+
+The hypothesis that to demonstrate in this project is that products with lower prices are more likely to use ad boosts in wish, since they are in a price war with their competitors and must look for alternatives to stand out on the platform. Likewise, products with a lower price will generate higher sales and therefore greater profits to suppliers, so it is more likely that they will invest in advertising. Additionally, including rating, which will be considered as a sales potential measure, to determine if this affects the decision to use ad boosts.
+
+```{r 1, eval=TRUE, echo=FALSE}
+
+## Clean workspace ##
+
+rm(list=ls())
+
+## Prepare Packages ##
+library(tidyverse)
+library(modelsummary)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+library(ggpubr)
+library(RColorBrewer)
+library(gtsummary)
+library(scales)
+
+
+## Load Database ##
+
+Database <- read_csv('https://raw.githubusercontent.com/Natalia1211/DA2/main/Proyect/summer-products-with-rating-and-performance_2020-08.csv')
+
+## Selecting variables ##
+
+DB <- select(Database, price, rating, uses_ad_boosts, units_sold, product_id)
+
+```
+
+## Data
+
+The analysis is based on obtained data in kaggle corresponding to the sales of summer clothes on the Wish platform during August 2020. The database has 1.573 observations and 43 variables. The model will have 5 variables from the original database:
+
+-   Product ID: Product identifier (Cualitative, Nominal)
+
+-   Price: final price of sale to the public (Cuantitative, Interval)
+
+-   Units Sold : sale in units of the product (Cuantitative, Interval)
+
+-   Uses of Ad Boosts: Whether the product has boosts on the platform (Dummy)
+
+-   Rating: Average of product rating (Cuantitative, Ordinal)
+
+```{r 2, echo=FALSE}
+
+## Descriptive stadistics ##
+
+# Function for 5% #
+P05 <- function(x){quantile(x,0.05,na.rm=T)}
+
+# Function for 95% #
+P95 <- function(x){quantile(x,0.95,na.rm=T)}
+
+# Funcion for mode #
+mode <- function(x){
+  unix <- unique( x )
+  unix[ which.max( tabulate( match( x, unix ) ) ) ]
+}
+
+# Data Summary #
+  
+datasummary( price + (`units sold` = units_sold) + rating  ~ Mean + Median + mode + SD + Min + max + P05+ P25 + P75 + P95 + N + PercentMissing , data = DB, title = 'Exhibit 1. Descriptive statistics') %>% 
+      kable_styling(latex_options = c("HOLD_position","scale_down"))
+
+DB <- filter(DB, DB$price < 49)
+```
+
+In the case of the price, we see that it has a shape similar to a distribution distribution, with a tail to the right due to a product with a price of EUR $49. This observation corresponds to an article that does not fit into the category of summer clothing, so it was discarted from this analysis. Rating variable is skewed to the right as most reviews are above average. Also exhibits 2 and 3 shows that 43% of the products use ad boosts, representing 42% of the units sold. Finally, exhibit 5 highlights that 27% of the sales corresponds to products of less than 5 euros.
+
+```{r 3, echo=FALSE}
+
+## Creating Dummy variables for price ranges##
+
+DB$P0_5 <- ifelse( DB$price<= 5, 1, 0)
+DB$P6_10 <- ifelse( DB$price> 5 & DB$price<=10 , 1, 0)
+DB$P11_15 <- ifelse( DB$price> 10 & DB$price<=15 , 1, 0)
+DB$Pmore_than_15 <- ifelse( DB$price > 15 , 1, 0)
+DB$Ad <- ifelse( DB$uses_ad_boosts == 1, "Yes", "No")
+DB$Pless5 <- ifelse( DB$P0_5 == 1, "0-5", "More Than 5")
+```
+
+```{r 5, warning=FALSE, echo=FALSE, fig.align='center', fig.show="hold", fig.width=50, fig.height=15 }
+## ggplot variables #
+
+#Funtion for labels#
+
+M <- function (x) { number_format(accuracy = 1,
+                                   scale = 1/1000000,
+                                   suffix = "M",
+                                   big.mark = ",")(x) }
+
+
+Plot1 <- ggplot(DB, aes(x = Ad, fill = Ad )) + geom_bar(stat = 'count')  + 
+  labs( x = 'Use Ad Boosts', y = 'Number of products', title = 'Exhibit 2. Quantity of products')  + scale_fill_brewer(palette = "Paired") + theme_test() +
+  theme(legend.position = "none", text = element_text(size=60), axis.text.x = element_text(color = "grey20", size = 60), axis.text.y = element_text(color = "grey20", size = 60))
+
+Plot2 <- ggplot(DB, aes(x = Ad , y = units_sold, fill = Ad )) + geom_col() + labs( x = 'Use Ad Boosts', y = 'Units Sold', title = 'Exhibit 3. Units Sold ') + scale_fill_brewer(palette = "Paired") + theme_test() +
+  theme(legend.position = "none", text = element_text(size=60), axis.text.x = element_text(color = "grey20", size = 60), axis.text.y = element_text(color = "grey20", size = 60)) + scale_y_continuous(labels = M)
+
+
+Plots <- ggarrange( Plot1, Plot2,
+                              ncol = 2, nrow = 1)
+Plots
+```
+
+```{r 4, warning=FALSE, echo=FALSE, fig.align='center', fig.show="hold", fig.width=50, fig.height=10 }
+
+
+# Histogram Price #
+
+Hist1 <- ggplot() + geom_histogram(aes(x = DB$price), color='black', fill ='#1f78b4', bins = 6) + 
+  labs( x = 'Prices', y = 'Frecuency', title = 'Exhibit 4. Distribution of price of all products')  + 
+  theme_test() + theme(text = element_text(size=60), axis.text.x = element_text(color = "grey20", size = 60), axis.text.y = element_text(color = "grey20", size = 60))
+
+# Histogram rating with Ad #
+Hist2 <- ggplot() + geom_histogram(aes(x = DB$rating), color='black', fill ='#1f78b4') + 
+  labs( x = 'Avg rating', y = 'Frecuency', title = 'Exhibit 6. Distribution of AVG rating of products ')  + theme_test() + theme(text = element_text(size=60), axis.text.x = element_text(color = "grey20", size = 60), axis.text.y = element_text(color = "grey20", size = 60))
+
+ 
+# Distribution of sales#
+Plot3 <- ggplot(DB, aes(x = Pless5 , y = units_sold, fill = Pless5 )) + geom_col() + labs( x = 'Units Sold', y = 'Units Sold', title = 'Exhibit 5. Units Sold according to Price range') + 
+  scale_fill_brewer(palette = "Paired") + scale_y_continuous(labels = M) + theme_test() +
+  theme(legend.position = "none", text = element_text(size=60), axis.text.x = element_text(color = "grey20", size = 60), axis.text.y = element_text(color = "grey20", size = 60))
+
+ 
+Garphs <- ggarrange( Hist1, Plot3,
+                              ncol = 2, nrow = 1)
+Garphs
+
+
+Hist2
+```
+
+## Model
+
+This analysis will use a logit regression model, in order to evaluate the impact of the variables on the probability that a product uses an ad boosts. Exhibit 7 shows models 1 to 3, that are univariate, considering the variables of price, units and qualification. Results indicate that in model 1, price variable is significant at 99.9% and in model 3, rating variable is significant at 90%. In model 2, variable units sold wasn't significant, discarting it from the analysis.
+
+```{r 8, warning=FALSE, echo=FALSE}
+
+logit1 <- glm(uses_ad_boosts ~ price , data = DB, family = "binomial")
+
+mod1<- exp(logit1$coefficients)
+
+logit2 <- glm(uses_ad_boosts ~ units_sold , data = DB, family = "binomial")
+
+mod2 <-exp(logit2$coefficients)
+
+logit3 <- glm(uses_ad_boosts ~ rating, data = DB, family = "binomial")
+
+mod3 <- exp(logit3$coefficients)
+
+logit4 <- glm(uses_ad_boosts ~ P0_5 + P6_10+ P11_15, data = DB, family = "binomial")
+
+mod4 <- exp(logit4$coefficients)
+
+logit5 <- glm(uses_ad_boosts ~ P0_5 + P6_10+ P11_15 + rating, data = DB, family = "binomial")
+
+mod5 <-exp(logit5$coefficients)
+
+logit6 <- glm(uses_ad_boosts ~ price + rating, data = DB, family = "binomial")
+
+mod6 <- exp(logit6$coefficients)
+
+logit7 <- glm(uses_ad_boosts ~ P0_5 + P6_10+ P11_15 + rating + price, data = DB, family = "binomial")
+
+mod7 <- exp(logit7$coefficients)
+
+
+logit8 <- glm(formula = uses_ad_boosts ~ P0_5 + rating, family = "binomial", data = DB)
+
+mod8 <- exp(logit8$coefficients)
+
+
+```
+
+```{r 9, echo=FALSE}
+
+t1 <- tbl_regression(logit1, exponentiate = TRUE, tab_spanner = c("**Model 1**"))
+t2 <- tbl_regression(logit2, exponentiate = TRUE)
+t3 <- tbl_regression(logit3, exponentiate = TRUE)
+```
+
+Model 1
+```{r a, echo=FALSE}
+t1
+```
+Model 2
+```{r b, echo=FALSE}
+t2
+```
+Model 3
+```{r c, echo=FALSE}
+t3
+```
+
+
+
+For multivariate models, dummy variables were included to create price ranges, however in models 4 and 5 none of these variables were significant. Although models 4 and 5 were not significant, they indicate a trend where lower-priced products are more likely to have boosts on the platforms. Products under 5 euros have an approximate 46% probability of using the boosts. Finally, model 6 includes the price and rating variables, with both being significant and therefore this is the model that has the better fit.
+
+Model 6 indicates that there is a negative relationship between the probability that a product has ad boost and its price and rating. For each additional dollar in the price, the probability that it has ad boosts decreases by approximately 4%. Likewise, each additional point in the product's rating will decrease the probability of using advertising by approximately 16%.
+
+
+```{r 10, echo=FALSE}
+
+t4 <- tbl_regression(logit4, exponentiate = TRUE)
+t5 <- tbl_regression(logit5, exponentiate = TRUE)
+t6 <- tbl_regression(logit6, exponentiate = TRUE)
+```
+
+Model 4
+```{r d, echo=FALSE}
+t4
+```
+Model 5
+```{r e, echo=FALSE}
+t5
+```
+Model 6
+```{r f, echo=FALSE}
+t6
+```
+
+
+
+
+
+## Conclusion
+
+After analyzing the different models, the conclusion is that while higher the price or rating of a product on Wish, lower is the probability that it will have an advertising boost. This is aligned with the nature of the platform, in which prices are very low, not allowing additional discounts without compromising the profitability of sellers. Under this scenario, suppliers search for options, other than price reduction, to capture demand, so the use of advertisement in their products is one of the most common strategies. For ecommerce, the usage of ads is very easy to implement, representing a low investment while maximizing the visibility for customers and therefor the return on their investment.
+
+This exercise could be replicated for other types of digital platforms with a different customer profile, such as Amazon, where it is common for suppliers to seek visibility to higher-priced products with higher margins to communicate the value proposition of their brands
+
+
+
+
+
